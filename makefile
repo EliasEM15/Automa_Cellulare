@@ -7,17 +7,17 @@ THREADS ?= 10
 EXECS ?= 49
 CSV_FILE ?= parallelismo_privato.csv
 
-app_test: AutP.cpp
-	$(CXX) $(CXXFLAGS_BASE) -fopenmp -o AutP_test AutP.cpp
+app_test: main.cpp
+	$(CXX) $(CXXFLAGS_BASE) -fopenmp -o AutP_test main.cpp
 
-app_seq: AutP.cpp
-	$(CXX) $(CXXFLAGS_BASE) -o AutP_seq AutP.cpp
+app_seq: main.cpp
+	$(CXX) $(CXXFLAGS_BASE) -o AutP_seq main.cpp
 
-app_csv: AutP.cpp
-	$(CXX) $(CXXFLAGS_BASE) -fopenmp -DCSV_OUTPUT -o AutP_csv AutP.cpp
+app_csv: main.cpp
+	$(CXX) $(CXXFLAGS_BASE) -fopenmp -DCSV_OUTPUT -o AutP_csv main.cpp
 
-app_csv_seq: AutP.cpp
-	$(CXX) $(CXXFLAGS_BASE) -DCSV_OUTPUT -o AutS_csv AutP.cpp
+app_csv_seq: main.cpp
+	$(CXX) $(CXXFLAGS_BASE) -DCSV_OUTPUT -o AutS_csv main.cpp
 
 test: app_test
 	.\AutP_test $(N) $(THREADS) 1
