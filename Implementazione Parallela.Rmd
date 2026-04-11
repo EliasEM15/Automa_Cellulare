@@ -1,0 +1,164 @@
+---
+title: "Implementazione Parallela"
+output: html_document
+date: "2026-04-08"
+owner: Elias Ezequiel Moreno matricola n° 244211
+---
+# Implementazione Parallela dell'Automa Cellulare "Game of Life" in C++ e OpenMP
+Il gioco della Vita di John Conway è un modello di automa celllulare. Questo “gioco” si svolge in una griglia quadrata NxN, composta da celle che possono assumere solo due stati: 0(la cellula è morta) o 1(la cellula è viva). Lo stato della griglia evolve in un tempo discreto, con una separazione netta tra lo stato precedente e quello futuro. Il valore di ogni cella varia a seconda dello stato attuale delle celle adiacenti ad essa, seguendo le seguenti regole:
+
+*	Qualsiasi cella viva con meno di due celle vive adiacenti muore, come per effetto d'isolamento;
+*	Qualsiasi cella viva con due o tre celle vive adiacenti sopravvive alla generazione successiva;
+*	Qualsiasi cella viva con più di tre celle vive adiacenti muore, come per effetto di sovrappopolazione;
+*	Qualsiasi cella morta con esattamente tre celle vive adiacenti diventa una cella viva, come per effetto di riproduzione.
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(knitr)
+library(plotly)
+library(latex2exp)
+library(tinytex)
+```
+
+```{r,include=FALSE}
+dataS <- read.csv("perf_dim.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+
+dataP <- read.csv("perf_dimP.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+
+dataS
+head(dataP)
+
+
+```
+
+## Studio delle performance al variare della dimensione del problema da risolvere
+
+L’analisi delle perfomance viene svolta paragonando i risultati ricavati dal codice sequenziale con quello in parallelo, mantenendo il numero di thread pari al numero di core presenti nel dispositivo e le iterazioni pari a 100: 
+
+```{r pressure, echo=FALSE}
+
+media_tempiS <- aggregate(t ~ NxN, data = dataS, FUN = mean)
+funzione_splineS <- splinefun(media_tempiS$NxN, media_tempiS$t, method = "fmm")
+
+perform_dimS <- ggplot(data = dataS, aes(x = NxN, y = t)) +
+               geom_point(color = "blue", alpha = 0.3) + # alpha rende i punti semitrasparenti
+               labs(title = "Tempo in funzione della dimensione",
+                    x = "Dimensione (NxN)", 
+                    y = "Tempo (t)")
+
+media_tempiP <- aggregate(t ~ NxN, data = dataP, FUN = mean)
+funzione_splineP <- splinefun(media_tempiP$NxN, media_tempiP$t, method = "fmm")
+
+perform_dimP <- ggplot(data = dataP, aes(x = NxN, y = t)) +
+               geom_point(color = "blue", alpha = 0.3) + # alpha rende i punti semitrasparenti
+               labs(title = "Tempo in funzione della dimensione",
+                    x = "Dimensione (NxN)", 
+                    y = "Tempo (t)")
+
+
+Grafico_seq <- perform_dimS + geom_line(data = media_tempiS, aes(x = NxN, y = t), color = "red", linewidth = 1) +
+                    geom_point(data = media_tempiS, aes(x = NxN, y = t), color = "black", size = 2)
+Grafico_par <- perform_dimP + geom_line(data = media_tempiP, aes(x = NxN, y = t), color = "red", linewidth = 1) +
+                    geom_point(data = media_tempiP, aes(x = NxN, y = t), color = "black", size = 2)
+
+ggplot()+ geom_line(data = media_tempiS, aes(x = NxN, y = t, , color = "Sequenziale"), linewidth = 1) + geom_line(data = media_tempiP, aes(x = NxN, y = t, color = "Parallelo"), linewidth = 1) + labs(color = "Tipo di lavoro")
+```
+
+Da quello che si può osservare dal grafico, il parallelismo risulta essere uno strumento molto potente, in grado di velocizzare il codice soprattutto aumentando il livello di complessità della matrice come si può notare
+
+## Studio della variazione delle performance in base alla variazione del parallelismo
+Le perfomance del nostro codice possono variare non solo a come le istruzioni vengono processate (sequenziale o parallelo) ma anche in base a come esse siano distribuite. Questo punto è in grado di essere regolato in base al numero di thread che noi definiamo da usare. Aumentare il numero di thread non comporta sempre l’aumento delle perfomance dato che, se aumentati oltre un certo limite può causare un fenomeno chiamato overhead di gestione, dove l’elevato numero di thread genera una contesa nelle risorse del computer, provocando una riduzione nell’efficienza.
+
+Svolgo il test con una matrice 10000x10000, tenendo conto che in sequenziale il tempo di esecuzione è di 4.99 sec
+
+
+```{r, echo=FALSE, include=FALSE}
+data_Thread <- read.csv("perf_Parallelismo.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+data_Thread
+
+```
+```{r, echo=FALSE}
+seq <- mean(dataS$t[251:300])
+Parallelo <- tibble(
+           SpeedUp=seq/data_Thread$t
+                    ) %>% 
+          mutate(Efficiency=SpeedUp/data_Thread$Threads) %>%
+          mutate(Threads= data_Thread$Threads )
+MeanSpeedUp <- aggregate(SpeedUp ~ Threads, data = Parallelo, FUN = mean)
+SpS<- splinefun(x = MeanSpeedUp$Threads, 
+  y = MeanSpeedUp$SpeedUp,, method = "fmm")
+## MeanSpeedUp
+ggplot(data = Parallelo, aes(x = Threads, y = SpeedUp)) + geom_point(color="green") + geom_line(data = MeanSpeedUp, aes(x = Threads, y = SpeedUp, color = "SpeedUp"), color="blue", linewidth = 1)  +
+  
+  labs(
+    title = "SpeedUp vs Threads",
+    x = "Numero di Thread",
+    y = "SpeedUp"
+  )
+```
+
+Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore, ossia all'incirca 2.61. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
+
+```{r, echo=FALSE}
+MeanEfficiency <- aggregate(Efficiency ~ Threads, data = Parallelo, FUN = mean)
+SpE<- splinefun(x = MeanEfficiency$Threads, 
+  y = MeanEfficiency$Efficiency,, method = "fmm")
+## MeanEfficiency
+ggplot(data = Parallelo, aes(x = Threads, y = Efficiency)) + geom_point(color="green") + geom_line(data = MeanEfficiency, aes(x = Threads, y = Efficiency, color = "Efficiency"), color="blue", linewidth = 1)  +
+  
+  labs(
+    title = "Efficiency vs Threads",
+    x = "Numero di Thread",
+    y = "Efficiency"
+  )
+```
+
+Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta  fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice. Dove avevamo ottenuto il valore massimo di SpeedUp, l'efficienza risulta del 15,44%, causato dalle stesse condizioni per il quale lo SpeedUp non aumentava oltre una certa soglia.
+
+## Studio della variazione delle performance in base al numero di variabili condivise/private, e in base al modo di scheduling dei threads
+
+In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è un requisito fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza computazionale. L'obiettivo di questo studio non è solo misurare l'accelerazione del codice, ma dimostrare come il controllo esplicito dell'accesso alla memoria prevenga errori critici di sincronizzazione. In OpenMp, la memoria viene gestita attraverso due classi principali:
+
+  * Condivisa(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
+  * Privata(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde 
+
+Una prova molto interessante da compiere in modo da capire cosa potrebbe accadere in caso di un'errata configurazioni di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando non solo il tempo di lettura ma anche la dimensione del problema.
+
+
+
+
+
+
+
+
+
