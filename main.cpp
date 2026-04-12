@@ -11,7 +11,7 @@ using namespace std;
 
 void NextGeneration (const vector<int>& CurrentGen, vector<int>& NextGen, int N)
 {
-    #pragma omp parallel for firstprivate(CurrentGen)
+    #pragma omp parallel for schedule(static)
   
 
     for(int y=1; y< N - 1; ++y)

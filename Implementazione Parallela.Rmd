@@ -59,30 +59,41 @@ L’analisi delle perfomance viene svolta paragonando i risultati ricavati dal c
 ```{r pressure, echo=FALSE}
 
 media_tempiS <- aggregate(t ~ NxN, data = dataS, FUN = mean)
-funzione_splineS <- splinefun(media_tempiS$NxN, media_tempiS$t, method = "fmm")
-
-perform_dimS <- ggplot(data = dataS, aes(x = NxN, y = t)) +
-               geom_point(color = "blue", alpha = 0.3) + # alpha rende i punti semitrasparenti
-               labs(title = "Tempo in funzione della dimensione",
-                    x = "Dimensione (NxN)", 
-                    y = "Tempo (t)")
+funzione_splineS <- splinefun(media_tempiS$NxN, media_tempiS$t, method = "monoH.FC")
 
 media_tempiP <- aggregate(t ~ NxN, data = dataP, FUN = mean)
-funzione_splineP <- splinefun(media_tempiP$NxN, media_tempiP$t, method = "fmm")
+funzione_splineP <- splinefun(media_tempiP$NxN, media_tempiP$t, method = "monoH.FC")
 
-perform_dimP <- ggplot(data = dataP, aes(x = NxN, y = t)) +
-               geom_point(color = "blue", alpha = 0.3) + # alpha rende i punti semitrasparenti
-               labs(title = "Tempo in funzione della dimensione",
-                    x = "Dimensione (NxN)", 
-                    y = "Tempo (t)")
+#ggplot(data=dataS, aes(x = NxN, y = t)) +
+#  geom_point(color = "green", size = 3) + 
+#  stat_function(fun = funzione_splineS, color = "blue", linewidth = 1) + 
+#  labs(
+#    title = "Sequenziale vs Parallelo",
+#    x = "NxN",
+#    y = "t"
+#  ) +
+#  ggplot(data=dataP, aes(x = NxN, y = t)) +
+#  geom_point(color = "green", size = 3) + 
+#  stat_function(fun = funzione_splineP, color = "blue", linewidth = 1) +
+#  theme_minimal()
 
-
-Grafico_seq <- perform_dimS + geom_line(data = media_tempiS, aes(x = NxN, y = t), color = "red", linewidth = 1) +
-                    geom_point(data = media_tempiS, aes(x = NxN, y = t), color = "black", size = 2)
-Grafico_par <- perform_dimP + geom_line(data = media_tempiP, aes(x = NxN, y = t), color = "red", linewidth = 1) +
-                    geom_point(data = media_tempiP, aes(x = NxN, y = t), color = "black", size = 2)
-
-ggplot()+ geom_line(data = media_tempiS, aes(x = NxN, y = t, , color = "Sequenziale"), linewidth = 1) + geom_line(data = media_tempiP, aes(x = NxN, y = t, color = "Parallelo"), linewidth = 1) + labs(color = "Tipo di lavoro")
+ggplot() + 
+  geom_point(data = dataS, aes(x = NxN, y = t, color = "Sequenziale"), size = 1) + 
+  stat_function(fun = funzione_splineS, aes(color = "Sequenziale"), linewidth = 1) + 
+  
+  geom_point(data = dataP, aes(x = NxN, y = t, color = "Parallelo"), size = 3) + 
+  stat_function(fun = funzione_splineP, aes(color = "Parallelo"), linewidth = 1) +
+  
+  # --- Titoli e Stile ---
+  labs(
+    title = "Confronto Tempi: Sequenziale vs Parallelo",
+    x = "Dimensione (NxN)",
+    y = "Tempo (t)",
+    color = "Codice" # Titolo della legenda
+  ) +
+  # Impostiamo i colori manualmente per la legenda
+  scale_color_manual(values = c("Sequenziale" = "red", "Parallelo" = "blue")) +
+  theme_minimal()
 ```
 
 Da quello che si può osservare dal grafico, il parallelismo risulta essere uno strumento molto potente, in grado di velocizzare il codice soprattutto aumentando il livello di complessità della matrice come si può notare
@@ -116,15 +127,17 @@ Parallelo <- tibble(
           mutate(Threads= data_Thread$Threads )
 MeanSpeedUp <- aggregate(SpeedUp ~ Threads, data = Parallelo, FUN = mean)
 SpS<- splinefun(x = MeanSpeedUp$Threads, 
-  y = MeanSpeedUp$SpeedUp,, method = "fmm")
+  y = MeanSpeedUp$SpeedUp,, method = "monoH.FC")
 ## MeanSpeedUp
-ggplot(data = Parallelo, aes(x = Threads, y = SpeedUp)) + geom_point(color="green") + geom_line(data = MeanSpeedUp, aes(x = Threads, y = SpeedUp, color = "SpeedUp"), color="blue", linewidth = 1)  +
-  
+ggplot() +  
+  geom_point(data=Parallelo, aes(x = Threads, y = SpeedUp, color = "Curva"), size = 1) + 
+  stat_function(fun = SpS, color = "blue", linewidth = 1) + 
   labs(
     title = "SpeedUp vs Threads",
     x = "Numero di Thread",
-    y = "SpeedUp"
-  )
+    y = "Efficiency"
+  ) +
+  theme_minimal()
 ```
 
 Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore, ossia all'incirca 2.61. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
@@ -132,30 +145,98 @@ Il grafico presenta un comportamento estremamente peculiare e identificativo del
 ```{r, echo=FALSE}
 MeanEfficiency <- aggregate(Efficiency ~ Threads, data = Parallelo, FUN = mean)
 SpE<- splinefun(x = MeanEfficiency$Threads, 
-  y = MeanEfficiency$Efficiency,, method = "fmm")
+  y = MeanEfficiency$Efficiency,, method = "monoH.FC")
 ## MeanEfficiency
-ggplot(data = Parallelo, aes(x = Threads, y = Efficiency)) + geom_point(color="green") + geom_line(data = MeanEfficiency, aes(x = Threads, y = Efficiency, color = "Efficiency"), color="blue", linewidth = 1)  +
-  
+ggplot() +
+  geom_point(data=Parallelo, aes(x = Threads, y = Efficiency), color = "green", size = 3) + 
+  stat_function(fun = SpE, color = "blue", linewidth = 1) + 
   labs(
     title = "Efficiency vs Threads",
     x = "Numero di Thread",
     y = "Efficiency"
-  )
+  ) +
+  theme_minimal()
 ```
 
 Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta  fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice. Dove avevamo ottenuto il valore massimo di SpeedUp, l'efficienza risulta del 15,44%, causato dalle stesse condizioni per il quale lo SpeedUp non aumentava oltre una certa soglia.
 
 ## Studio della variazione delle performance in base al numero di variabili condivise/private, e in base al modo di scheduling dei threads
 
-In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è un requisito fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza computazionale. L'obiettivo di questo studio non è solo misurare l'accelerazione del codice, ma dimostrare come il controllo esplicito dell'accesso alla memoria prevenga errori critici di sincronizzazione. In OpenMp, la memoria viene gestita attraverso due classi principali:
+### Private vs Shared
+In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza.
+In OpenMp, la memoria viene gestita attraverso due classi principali:
 
   * Condivisa(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
   * Privata(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde 
 
-Una prova molto interessante da compiere in modo da capire cosa potrebbe accadere in caso di un'errata configurazioni di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando non solo il tempo di lettura ma anche la dimensione del problema.
+Una prova molto interessante da compiere in modo da capire cosa potrebbe accadere in caso di un'errata configurazioni di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando non il tempo di lettura.
+
+```{r, echo=FALSE, include=FALSE}
+
+Private <- read.csv("parallelismo_privato.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+Private
+```
+```{r, echo=FALSE}
+Private_mean <- aggregate(t ~ NxN, data = Private, FUN = mean)
+SpP<- splinefun(x = Private_mean$NxN, y = Private_mean$t, method = "monoH.FC")
+
+ggplot() + geom_point(data=Private, aes(x = NxN, y = t, color="Parallelo errato"), size=1) +
+  stat_function(fun = SpP, aes(color = "Parallelo errato"), linewidth = 1) + 
+  labs(
+    title = "SpeedUp vs Threads",
+    x = "Numero di Thread",
+    y = "Efficiency"
+  ) + stat_function(fun = funzione_splineP, aes(color = "Parallelo"), linewidth = 1) +
+  theme_minimal()
 
 
 
+
+
+
+```
+### Static vs Dynamic
+
+Lo scheduling è un altro requisito importante per l'efficienza di un programma. Esso è il processo mediante il quale un sistema decide l'ordine di esecuzione, assegnando le risorse necessarie. Si divide principalmente in due approcci, che si differenziano in base al momento in cui vengono fatte tali decisioni:
+
+  * Statico(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
+  * Dinamico(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
+```{r, echo=FALSE}
+Scheduling <- read.csv("scheduling.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+Scheduling
+```
+```{r, echo=FALSE}
+Scheduling_mean <- aggregate(t ~ NxN, data = Scheduling, FUN = mean)
+SpSch<- splinefun(x = Scheduling_mean$NxN, y = Scheduling_mean$t, method = "monoH.FC")
+
+ggplot() + geom_point(data=Scheduling, aes(x = NxN, y = t, color="Parallelo errato"), size=1) +
+  stat_function(fun = SpSch, aes(color = "Parallelo errato"), linewidth = 1) + 
+  labs(
+    title = "SpeedUp vs Threads",
+    x = "Numero di Thread",
+    y = "Efficiency"
+  ) + stat_function(fun = SpSch, aes(color = "Parallelo"), linewidth = 1) +
+  theme_minimal()
+
+```
 
 
 
