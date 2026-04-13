@@ -99,6 +99,7 @@ ggplot() +
 Da quello che si può osservare dal grafico, il parallelismo risulta essere uno strumento molto potente, in grado di velocizzare il codice soprattutto aumentando il livello di complessità della matrice come si può notare
 
 ## Studio della variazione delle performance in base alla variazione del parallelismo
+### Strong Scaling
 Le perfomance del nostro codice possono variare non solo a come le istruzioni vengono processate (sequenziale o parallelo) ma anche in base a come esse siano distribuite. Questo punto è in grado di essere regolato in base al numero di thread che noi definiamo da usare. Aumentare il numero di thread non comporta sempre l’aumento delle perfomance dato che, se aumentati oltre un certo limite può causare un fenomeno chiamato overhead di gestione, dove l’elevato numero di thread genera una contesa nelle risorse del computer, provocando una riduzione nell’efficienza.
 
 Svolgo il test con una matrice 10000x10000, tenendo conto che in sequenziale il tempo di esecuzione è di 4.99 sec
@@ -140,7 +141,7 @@ ggplot() +
   theme_minimal()
 ```
 
-Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore, ossia all'incirca 2.61. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
+Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore, ossia all'incirca **2.61**. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
 
 ```{r, echo=FALSE}
 MeanEfficiency <- aggregate(Efficiency ~ Threads, data = Parallelo, FUN = mean)
@@ -158,7 +159,15 @@ ggplot() +
   theme_minimal()
 ```
 
-Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta  fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice. Dove avevamo ottenuto il valore massimo di SpeedUp, l'efficienza risulta del 15,44%, causato dalle stesse condizioni per il quale lo SpeedUp non aumentava oltre una certa soglia.
+Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta  fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice. Dove avevamo ottenuto il valore massimo di SpeedUp, l'efficienza risulta del **15,44%**, causato dalle stesse condizioni per il quale lo SpeedUp non aumentava oltre una certa soglia.
+
+### Weak Scaling
+
+facendo un analisi dello weak scaling, vogliamo verificare l'efficienza di ciascun thread, aumentando il numero di thread ma mantenendo fisso il carico di lavoro per ciascuno di esso. Questo metodo di analisi va a confrontare il tempo di esecuzione che, se il programma è debolmente scalabile, rimarrà costante circa, altrimenti esso andrà poco a poco aumentando. Si può dedurre che il tempo aumenterà sempre più a causa della **Banda passante della Memoria** ed all'**Overhead di Sincronizzazione**.
+```{r}
+
+```
+
 
 ## Studio della variazione delle performance in base al numero di variabili condivise/private, e in base al modo di scheduling dei threads
 
@@ -189,13 +198,13 @@ Private
 Private_mean <- aggregate(t ~ NxN, data = Private, FUN = mean)
 SpP<- splinefun(x = Private_mean$NxN, y = Private_mean$t, method = "monoH.FC")
 
-ggplot() + geom_point(data=Private, aes(x = NxN, y = t, color="Parallelo errato"), size=1) +
-  stat_function(fun = SpP, aes(color = "Parallelo errato"), linewidth = 1) + 
+ggplot() + geom_point(data=Private, aes(x = NxN, y = t, color="Private"), size=1) +
+  stat_function(fun = SpP, aes(color = "Private"), linewidth = 1) + 
   labs(
-    title = "SpeedUp vs Threads",
-    x = "Numero di Thread",
-    y = "Efficiency"
-  ) + stat_function(fun = funzione_splineP, aes(color = "Parallelo"), linewidth = 1) +
+    title = "Shared vs Private",
+    x = "NxN",
+    y = "t"
+  ) + stat_function(fun = funzione_splineP, aes(color = "Shared"), linewidth = 1) +
   theme_minimal()
 
 
@@ -204,6 +213,7 @@ ggplot() + geom_point(data=Private, aes(x = NxN, y = t, color="Parallelo errato"
 
 
 ```
+
 ### Static vs Dynamic
 
 Lo scheduling è un altro requisito importante per l'efficienza di un programma. Esso è il processo mediante il quale un sistema decide l'ordine di esecuzione, assegnando le risorse necessarie. Si divide principalmente in due approcci, che si differenziano in base al momento in cui vengono fatte tali decisioni:
@@ -211,7 +221,7 @@ Lo scheduling è un altro requisito importante per l'efficienza di un programma.
   * Statico(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
   * Dinamico(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
 ```{r, echo=FALSE}
-Scheduling <- read.csv("scheduling.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+Statico <- read.csv("scheduling_statico.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
       NxN=V1,
@@ -221,19 +231,31 @@ Scheduling <- read.csv("scheduling.csv", header = F, sep = ",", stringsAsFactors
       t=V5
     ) %>%
     mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
-Scheduling
+Dinamico <- read.csv("scheduling_dinamico.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
 ```
 ```{r, echo=FALSE}
-Scheduling_mean <- aggregate(t ~ NxN, data = Scheduling, FUN = mean)
-SpSch<- splinefun(x = Scheduling_mean$NxN, y = Scheduling_mean$t, method = "monoH.FC")
+Static_mean <- aggregate(t ~ NxN, data = Statico, FUN = mean)
+SpSt<- splinefun(x = Static_mean$NxN, y = Static_mean$t, method = "monoH.FC")
 
-ggplot() + geom_point(data=Scheduling, aes(x = NxN, y = t, color="Parallelo errato"), size=1) +
-  stat_function(fun = SpSch, aes(color = "Parallelo errato"), linewidth = 1) + 
+Dynamic_mean <- aggregate(t ~ NxN, data = Dinamico, FUN = mean)
+SpDy<- splinefun(x = Dynamic_mean$NxN, y = Dynamic_mean$t, method = "monoH.FC")
+
+ggplot(data=Statico, aes(x = NxN, y = t)) + 
+  stat_function(fun = SpSt, aes(color = "Static"), linewidth = 1) + 
   labs(
-    title = "SpeedUp vs Threads",
-    x = "Numero di Thread",
-    y = "Efficiency"
-  ) + stat_function(fun = SpSch, aes(color = "Parallelo"), linewidth = 1) +
+    title = "Static vs Dynamic",
+    x = "NxN",
+    y = "t"
+  ) + stat_function(fun = SpDy, aes(color = "Dynamic"), linewidth = 1) +
   theme_minimal()
 
 ```

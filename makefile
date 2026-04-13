@@ -2,10 +2,10 @@
 CXX = g++
 CXXFLAGS_BASE = -Wall -std=c++17 -O3
 
-N ?= 10000
-THREADS ?= 10
+N ?= 40000
+THREADS ?= 16
 EXECS ?= 49
-CSV_FILE ?= scheduling_dinamico.csv
+CSV_FILE ?= Weak_Scaling.csv
 
 app_test: main.cpp
 	$(CXX) $(CXXFLAGS_BASE) -fopenmp -o AutP_test main.cpp
