@@ -131,7 +131,7 @@ SpS<- splinefun(x = MeanSpeedUp$Threads,
   y = MeanSpeedUp$SpeedUp,, method = "monoH.FC")
 ## MeanSpeedUp
 ggplot() +  
-  geom_point(data=Parallelo, aes(x = Threads, y = SpeedUp, color = "Curva"), size = 1) + 
+  geom_point(data=Parallelo, aes(x = Threads, y = SpeedUp, color = "blue"), size = 1) + 
   stat_function(fun = SpS, color = "blue", linewidth = 1) + 
   labs(
     title = "SpeedUp vs Threads",
@@ -164,7 +164,30 @@ Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticam
 ### Weak Scaling
 
 facendo un analisi dello weak scaling, vogliamo verificare l'efficienza di ciascun thread, aumentando il numero di thread ma mantenendo fisso il carico di lavoro per ciascuno di esso. Questo metodo di analisi va a confrontare il tempo di esecuzione che, se il programma è debolmente scalabile, rimarrà costante circa, altrimenti esso andrà poco a poco aumentando. Si può dedurre che il tempo aumenterà sempre più a causa della **Banda passante della Memoria** ed all'**Overhead di Sincronizzazione**.
-```{r}
+```{r, echo=FALSE}
+Weak_dt <- read.csv("Weak_Scaling.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+```
+```{r, echo=FALSE}
+Weak_mean <- aggregate(t ~ NxN, data = Weak_dt, FUN = mean)
+SpW<- splinefun(x = Weak_mean$NxN, y = Weak_mean$t[1]/Weak_mean$t, method = "monoH.FC")
+
+ggplot(data=Weak_dt, aes(x = NxN, y = t))  +
+  stat_function(fun = SpW, aes(color = "Private"), linewidth = 1) + 
+  labs(
+    title = "Weak Scaling Efficiency",
+    x = "NxN",
+    y = "t"
+  ) +
+  theme_minimal()
 
 ```
 
@@ -175,8 +198,8 @@ facendo un analisi dello weak scaling, vogliamo verificare l'efficienza di ciasc
 In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza.
 In OpenMp, la memoria viene gestita attraverso due classi principali:
 
-  * Condivisa(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
-  * Privata(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde 
+  * **Condivisa**(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
+  * **Privata**(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde 
 
 Una prova molto interessante da compiere in modo da capire cosa potrebbe accadere in caso di un'errata configurazioni di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando non il tempo di lettura.
 
@@ -218,8 +241,8 @@ ggplot() + geom_point(data=Private, aes(x = NxN, y = t, color="Private"), size=1
 
 Lo scheduling è un altro requisito importante per l'efficienza di un programma. Esso è il processo mediante il quale un sistema decide l'ordine di esecuzione, assegnando le risorse necessarie. Si divide principalmente in due approcci, che si differenziano in base al momento in cui vengono fatte tali decisioni:
 
-  * Statico(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
-  * Dinamico(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
+  * **Statico**(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
+  * **Dinamico**(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
 ```{r, echo=FALSE}
 Statico <- read.csv("scheduling_statico.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
@@ -260,8 +283,67 @@ ggplot(data=Statico, aes(x = NxN, y = t)) +
 
 ```
 
+## Analisi in base all'inizializzazione delle Griglie (1D vs 2D)
 
+L'obiettivo di questo studio è analizzare come le performance del programma variano in base all'architettura della griglia. In particolare si analizzano due configurazioni diverse di griglia: 
 
+  * **Vettore monodimensionale**, dov'e la griglia'essa viene vettorizzata. In questo caso per spostarsi all'interno del vettore si usa l'indice "y*N + x"
+  * **Matrice bidimensionale**, dove si usa una sintassi più naturale dove per muoversi usiamo separatamente gli indici "x ed y"
+
+```{r, echo=FALSE}
+Bidimensionale <- read.csv("Griglia.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+Bidim_mean <- aggregate(t ~ NxN, data = Bidimensionale, FUN = mean)
+SpBidim<- splinefun(x = Bidim_mean$NxN, y = Bidim_mean$t, method = "monoH.FC")
+```
+```{r, echo= FALSE}
+ggplot(data=Bidimensionale, aes(x = NxN, y = t)) + 
+  stat_function(fun = SpBidim, aes(color = "2D"), linewidth = 1) + 
+  labs(
+    title = "1D vs 2D al variare di N",
+    x = "NxN",
+    y = "t"
+  ) + stat_function(fun = funzione_splineP, aes(color = "1D"), linewidth = 1) +
+  theme_minimal()
+
+```
+```{r, echo=FALSE}
+Bidimensionale.T <- read.csv("Griglia_Threads.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+BidimT_mean <- aggregate(t ~ Threads, data = Bidimensionale.T, FUN = mean)
+SpBidimT<- splinefun(x = BidimT_mean$Threads, y = BidimT_mean$t, method = "monoH.FC")
+Mean.P <- aggregate(t ~ Threads, data= data_Thread , FUN= mean)
+SpPar<- splinefun(x = Mean.P$Threads, y = Mean.P$t, method = "monoH.FC")
+```
+```{r, echo=FALSE}
+ggplot(data=Bidimensionale.T, aes(x = Threads, y = t)) + 
+  stat_function(fun = SpBidimT, aes(color = "2D"), linewidth = 1) + 
+  labs(
+    title = "1D vs 2D al variare dei Thread",
+    x = "Threads",
+    y = "t"
+  ) + stat_function(fun = SpPar, aes(color = "1D"), linewidth = 1) +
+  theme_minimal()
+
+```
+
+Questo risultato è estremamente soddisfacente, perché si può notare come la scelta di un vettore monodimensionale, seppur pensato per ottimizzare il comportamento della CPU riguardo i campionamenti dalla RAM, non sempre risulti la decisione più corretta. Si può notare infatti che il comportamento della matrice si adatta meglio, anche se di poco, al multithreading. D'altro canto, il vettore monodimensionale risulta sempre più performante all'aumentare della dimensione del problema.
 
 
 

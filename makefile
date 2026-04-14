@@ -2,10 +2,10 @@
 CXX = g++
 CXXFLAGS_BASE = -Wall -std=c++17 -O3
 
-N ?= 40000
-THREADS ?= 16
+N ?= 5000
+THREADS ?= 10
 EXECS ?= 49
-CSV_FILE ?= Weak_Scaling.csv
+CSV_FILE ?= Griglia.csv
 
 app_test: main.cpp
 	$(CXX) $(CXXFLAGS_BASE) -fopenmp -o AutP_test main.cpp
@@ -15,6 +15,9 @@ app_seq: main.cpp
 
 app_csv: main.cpp
 	$(CXX) $(CXXFLAGS_BASE) -fopenmp -DCSV_OUTPUT -o AutP_csv main.cpp
+
+app_griglia: Automa_griglia.cpp
+	$(CXX) $(CXXFLAGS_BASE) -fopenmp -DCSV_OUTPUT -o AutP_griglia Automa_griglia.cpp
 
 app_csv_seq: main.cpp
 	$(CXX) $(CXXFLAGS_BASE) -DCSV_OUTPUT -o AutS_csv main.cpp
@@ -34,6 +37,11 @@ run: app_csv
 runS: app_csv_seq
 	@echo "Avvio simulazione ..."
 	.\AutP_csv $(N) 1 $(EXECS) >> $(CSV_FILE)
+	@echo "Risultati salvati in $(CSV_FILE)"
+
+runG: app_griglia
+	@echo "Avvio simulazione ..."
+	.\AutP_griglia $(N) $(THREADS) $(EXECS) >> $(CSV_FILE)
 	@echo "Risultati salvati in $(CSV_FILE)"
 
 clean:
