@@ -111,7 +111,7 @@ for(int j=0; j <= executions; j++){
     chrono::duration<double> elapsed = end_time - start_time;
 
    #ifdef CSV_OUTPUT
-     cout << N << "," << num_threads << "," << iter << "," << j << "," << elapsed.count() << endl;
+     cout << N << "," << num_threads << "," << iter << "," << j << "," << elapsed.count() << "," << "-O2 -ftree-vectorize" << endl;
    #else
     cout<<"simulazione completata"<<endl;
     cout<<"Matrice "<<N<<"x"<<N<<endl;

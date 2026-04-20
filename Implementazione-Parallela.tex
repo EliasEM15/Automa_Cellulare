@@ -1,0 +1,274 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\documentclass[
+  12pt,
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+  \setmainfont[]{Times New Roman}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Implementazione Parallela dell'Automa Cellulare Game of Life in C++ e OpenMP},
+  pdfauthor={Elias Ezequiel Moreno matricola n° 244211},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Implementazione Parallela dell'Automa Cellulare Game of Life in
+C++ e OpenMP}
+\author{Elias Ezequiel Moreno matricola n° 244211}
+\date{}
+
+\begin{document}
+\maketitle
+
+Il gioco della Vita di John Conway è un modello di automa celllulare.
+Questo ``gioco'' si svolge in una griglia quadrata NxN, composta da
+celle che possono assumere solo due stati: 0(la cellula è morta) o 1(la
+cellula è viva). Lo stato della griglia evolve in un tempo discreto, con
+una separazione netta tra lo stato precedente e quello futuro. Il valore
+di ogni cella varia a seconda dello stato attuale delle celle adiacenti
+ad essa, seguendo le seguenti regole:
+
+\begin{itemize}
+\tightlist
+\item
+  Qualsiasi cella viva con meno di due celle vive adiacenti muore, come
+  per effetto d'isolamento;
+\item
+  Qualsiasi cella viva con due o tre celle vive adiacenti sopravvive
+  alla generazione successiva;
+\item
+  Qualsiasi cella viva con più di tre celle vive adiacenti muore, come
+  per effetto di sovrappopolazione;
+\item
+  Qualsiasi cella morta con esattamente tre celle vive adiacenti diventa
+  una cella viva, come per effetto di riproduzione.
+\end{itemize}
+
+\subsubsection{Studio delle performance al variare della dimensione del
+problema da
+risolvere}\label{studio-delle-performance-al-variare-della-dimensione-del-problema-da-risolvere}
+
+L'analisi delle perfomance viene svolta paragonando i risultati ricavati
+dal codice sequenziale con quello in parallelo, mantenendo il numero di
+thread pari al numero di core presenti nel dispositivo e le iterazioni
+pari a 100:
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-3-1.pdf}}
+
+Da quello che si può osservare dal grafico, il parallelismo risulta
+essere uno strumento molto potente, in grado di velocizzare il codice
+soprattutto aumentando il livello di complessità della matrice come si
+può notare
+
+\subsubsection{Studio della variazione delle performance in base alla
+variazione del
+parallelismo}\label{studio-della-variazione-delle-performance-in-base-alla-variazione-del-parallelismo}
+
+\paragraph{Strong Scaling}\label{strong-scaling}
+
+Le perfomance del nostro codice possono variare non solo a come le
+istruzioni vengono processate (sequenziale o parallelo) ma anche in base
+a come esse siano distribuite. Questo punto è in grado di essere
+regolato in base al numero di thread che noi definiamo da usare.
+Aumentare il numero di thread non comporta sempre l'aumento delle
+perfomance dato che, se aumentati oltre un certo limite può causare un
+fenomeno chiamato overhead di gestione, dove l'elevato numero di thread
+genera una contesa nelle risorse del computer, provocando una riduzione
+nell'efficienza.
+
+Svolgo il test con una matrice 10000x10000, tenendo conto che in
+sequenziale il tempo di esecuzione è di 4.99 sec
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-5-1.pdf}}
+
+Il grafico presenta un comportamento estremamente peculiare e
+identificativo delle caratterstiche del nostro hardware. Infatti per un
+numero di thread pari al numero di core del nostro computer si ottiene
+lo speedup maggiore in caso in cui si utilizzi come ottimizzatore
+``-O3'', per un numero di thread pari a 16, sono gli altri due
+ottimizzatori che ottengono il maggior speedup, coincidendo con il
+numero di processori che ha il computer. Aumentare il numero di thread
+ulteriormente risulta controproducente, questo dovuto ai ritardi
+generati dalla contesa delle risorse hardware e dall'alto overhead.
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-6-1.pdf}}
+
+Nel grafico dell'efficienza si può notare invece, come tale si riduce
+drasticamente man mano che il numero di thread aumenta fino a quando
+tale valore non risulta quasi zero, dimostrando come aumentare il numero
+di thread all'infinito non porti un beneficio nelle performance del
+codice.
+
+\paragraph{Weak Scaling}\label{weak-scaling}
+
+facendo un analisi dello weak scaling, vogliamo verificare l'efficienza
+di ciascun thread, aumentando il numero di thread ma mantenendo fisso il
+carico di lavoro per ciascuno di esso. Questo metodo di analisi va a
+confrontare il tempo di esecuzione che, se il programma è debolmente
+scalabile, rimarrà costante circa, altrimenti esso andrà poco a poco
+aumentando. Si può dedurre che il tempo aumenterà sempre più a causa
+della \textbf{Banda passante della Memoria} ed all'\textbf{Overhead di
+Sincronizzazione}.
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-8-1.pdf}}
+
+\subsubsection{Studio della variazione delle performance in base al
+numero di variabili condivise/private, e in base al modo di scheduling
+dei
+threads}\label{studio-della-variazione-delle-performance-in-base-al-numero-di-variabili-condiviseprivate-e-in-base-al-modo-di-scheduling-dei-threads}
+
+\paragraph{Private vs Shared}\label{private-vs-shared}
+
+In un ambiente di calcolo parallelo a memoria condivisa, la corretta
+classificazione delle variabili è fondamentale per garantire sia la
+correttezza matematica della simulazione, sia la sua efficienza. In
+OpenMp, la memoria viene gestita attraverso due classi principali:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Condivisa}(shared): sono le variabili a cui posso avere
+  accesso tutti i thread attivi contemporaneamente. Nel nostro codice,
+  le variabili condivise sono la dimensione N, e gli stati CurrentGen e
+  NextGen, dato che ogni thread elabora celle strettamente diverse, che
+  quindi non vanno in conflitto. Usare variabili condivise permette di
+  evitare che inutili copie vengano fatte durante l'esecuzione del
+  programma, evitando quindi il più possibile i tempi di scrittura e
+  lettura, ossia i più lenti.
+\item
+  \textbf{Privata}(Private): sono le variabili che ciascun thread ha, il
+  cui valore dev'essere indipendente dall'azione degli altri thread.
+  Affinché l'algoritmo funzioni correttamente, indici di scorrimento
+  come x,ydx e dy, e le variabili temporanee come Alive e CurrentState,
+  devono essere private. Questo perché se fossero condivise, ogni thread
+  sarebbe in grado di sovrascrivere tale valore, portando a perdite di
+  informazioni a ``salti'' o sovrascritture della variabile, causando
+  quindi un'avanzamento errato dell'algoritmo che porta ad un risultato
+  non concorde
+\end{itemize}
+
+Una prova molto interessante da compiere in modo da capire cosa potrebbe
+accadere in caso di un'errata configurazioni di variabili condividise e
+private è quella di forzare il codice a identificare CurrentGen come
+variabile privata. Quello che potremmo dedurre che accada è che il
+programma andrà a generare una griglia per ciascun thread, aumentando
+non il tempo di lettura.
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-10-1.pdf}}
+
+\paragraph{Static vs Dynamic vs
+Guided}\label{static-vs-dynamic-vs-guided}
+
+Lo scheduling è un altro requisito importante per l'efficienza di un
+programma. Esso è il processo mediante il quale un sistema decide
+l'ordine di esecuzione, assegnando le risorse necessarie. Si divide
+principalmente in due approcci, che si differenziano in base al momento
+in cui vengono fatte tali decisioni:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Statico}(Static Scheduling): l'assegnazione delle risorse
+  viene decisa prima dell'esecuzione del programma. Questo permette di
+  migliorare l'overhead ma manca assolutamente di flessibilità.
+\item
+  \textbf{Dinamico}(Dynamic Scheduling): le risorse vengono assegnazte
+  durante l'esecuzione del programma, permettendo quindi maggiore
+  flessibilità in caso di variazione del carico di lavoro, aumentando il
+  tempo di esecuzione del programma.
+\item
+  \textbf{Guidato}(Guided Scheduling): le risorse vengono assegnate
+  durante l'esecuzione in blocchi (chunk) di dimensioni via via
+  decrescenti fino a un limite minimo prefissato, permettendo di
+  mantenere l'alta flessibilità ai carichi di lavoro variabili ma
+  riducendo drasticamente il tempo di overhead (sincronizzazione)
+  rispetto al dinamico puro.
+\end{itemize}
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-12-1.pdf}}
+
+\subsubsection{Analisi in base all'inizializzazione delle Griglie (1D vs
+2D)}\label{analisi-in-base-allinizializzazione-delle-griglie-1d-vs-2d}
+
+L'obiettivo di questo studio è analizzare come le performance del
+programma variano in base all'architettura della griglia. In particolare
+si analizzano due configurazioni diverse di griglia:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Vettore monodimensionale}, dov'e la griglia'essa viene
+  vettorizzata. In questo caso per spostarsi all'interno del vettore si
+  usa l'indice ``y*N + x''
+\item
+  \textbf{Matrice bidimensionale}, dove si usa una sintassi più naturale
+  dove per muoversi usiamo separatamente gli indici ``x ed y''
+\end{itemize}
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-14-1.pdf}}
+
+\pandocbounded{\includegraphics[keepaspectratio]{Implementazione-Parallela_files/figure-latex/unnamed-chunk-16-1.pdf}}
+
+Questo risultato è estremamente soddisfacente, perché si può notare come
+la scelta di un vettore monodimensionale, seppur pensato per ottimizzare
+il comportamento della CPU riguardo i campionamenti dalla RAM, non
+sempre risulti la decisione più corretta. Si può notare infatti che il
+comportamento della matrice si adatta meglio, anche se di poco, al
+multithreading. D'altro canto, il vettore monodimensionale risulta
+sempre più performante all'aumentare della dimensione del problema.
+
+\end{document}

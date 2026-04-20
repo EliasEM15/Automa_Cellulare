@@ -1,16 +1,18 @@
 ---
-title: "Implementazione Parallela"
+title: "Implementazione Parallela dell'Automa Cellulare Game of Life in C++ e OpenMP"
+author: "Elias Ezequiel Moreno matricola n° 244211"
 output: html_document
-date: "2026-04-08"
-owner: Elias Ezequiel Moreno matricola n° 244211
+fontsize: 12pt
+mainfont: Times New Roman
+#date: "2026-04-08"
 ---
-# Implementazione Parallela dell'Automa Cellulare "Game of Life" in C++ e OpenMP
+
 Il gioco della Vita di John Conway è un modello di automa celllulare. Questo “gioco” si svolge in una griglia quadrata NxN, composta da celle che possono assumere solo due stati: 0(la cellula è morta) o 1(la cellula è viva). Lo stato della griglia evolve in un tempo discreto, con una separazione netta tra lo stato precedente e quello futuro. Il valore di ogni cella varia a seconda dello stato attuale delle celle adiacenti ad essa, seguendo le seguenti regole:
 
-*	Qualsiasi cella viva con meno di due celle vive adiacenti muore, come per effetto d'isolamento;
-*	Qualsiasi cella viva con due o tre celle vive adiacenti sopravvive alla generazione successiva;
-*	Qualsiasi cella viva con più di tre celle vive adiacenti muore, come per effetto di sovrappopolazione;
-*	Qualsiasi cella morta con esattamente tre celle vive adiacenti diventa una cella viva, come per effetto di riproduzione.
+-   Qualsiasi cella viva con meno di due celle vive adiacenti muore, come per effetto d'isolamento;
+-   Qualsiasi cella viva con due o tre celle vive adiacenti sopravvive alla generazione successiva;
+-   Qualsiasi cella viva con più di tre celle vive adiacenti muore, come per effetto di sovrappopolazione;
+-   Qualsiasi cella morta con esattamente tre celle vive adiacenti diventa una cella viva, come per effetto di riproduzione.
 
 ```{r setup, include=FALSE}
 library(dplyr)
@@ -21,19 +23,58 @@ library(knitr)
 library(plotly)
 library(latex2exp)
 library(tinytex)
+library(patchwork)
+```
+
+```{r, echo=FALSE, include=FALSE}
+paper_colors <- c(
+  "Sequenziale" = "#B2182B", "Parallelo" = "#2166AC", 
+  "Private" = "#B2182B",     "Default" = "#2166AC",
+  "Static" = "#B2182B",      "Dynamic" = "#2166AC", "Guided" = "#1B7837",
+  "1D" = "#B2182B",          "2D" = "#2166AC",
+  "SpeedUp" = "#1B7837",     "Efficiency" = "#762A83"
+)
+opt_colors <- c(
+  "-O0" = "#D7191C",        # Rosso
+  "-O2 -ftree-vectorize" = "#FDAE61",        # Arancione
+  "-O3" = "#2C7BB6"         # Blu scuro
+)
+theme_paper <- function() {
+  theme_bw(base_size = 11, base_family = "sans") +
+    theme(
+      plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+      axis.title = element_text(face = "bold", size = 11),
+      axis.text = element_text(size = 10, color = "black"),
+      legend.position = "bottom",
+      legend.title = element_text(face = "bold"),
+      
+      # MODIFICA QUI: color = NA toglie il bordo nero attorno alla legenda
+      legend.background = element_rect(fill = "white", color = NA), 
+      
+      legend.key = element_blank(),
+      legend.margin = margin(t = -5, b = 5, r = 5, l = 5),
+      panel.grid.major = element_line(color = "grey85", linewidth = 0.4),
+      panel.grid.minor = element_blank(), 
+      panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
+      axis.ticks = element_line(color = "black", linewidth = 0.6)
+    )
+  
+}
 ```
 
 ```{r,include=FALSE}
-dataS <- read.csv("perf_dim.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+dataS <- read.csv("perf_dim.csv", header = F, sep =",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
       NxN=V1,
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 
 dataP <- read.csv("perf_dimP.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
@@ -42,9 +83,11 @@ dataP <- read.csv("perf_dimP.csv", header = F, sep = ",", stringsAsFactors = FAL
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 
 dataS
 head(dataP)
@@ -52,60 +95,52 @@ head(dataP)
 
 ```
 
-## Studio delle performance al variare della dimensione del problema da risolvere
+### Studio delle performance al variare della dimensione del problema da risolvere
 
-L’analisi delle perfomance viene svolta paragonando i risultati ricavati dal codice sequenziale con quello in parallelo, mantenendo il numero di thread pari al numero di core presenti nel dispositivo e le iterazioni pari a 100: 
+L’analisi delle perfomance viene svolta paragonando i risultati ricavati dal codice sequenziale con quello in parallelo, mantenendo il numero di thread pari al numero di core presenti nel dispositivo e le iterazioni pari a 100:
 
-```{r pressure, echo=FALSE}
-
-media_tempiS <- aggregate(t ~ NxN, data = dataS, FUN = mean)
-funzione_splineS <- splinefun(media_tempiS$NxN, media_tempiS$t, method = "monoH.FC")
-
-media_tempiP <- aggregate(t ~ NxN, data = dataP, FUN = mean)
-funzione_splineP <- splinefun(media_tempiP$NxN, media_tempiP$t, method = "monoH.FC")
-
-#ggplot(data=dataS, aes(x = NxN, y = t)) +
-#  geom_point(color = "green", size = 3) + 
-#  stat_function(fun = funzione_splineS, color = "blue", linewidth = 1) + 
-#  labs(
-#    title = "Sequenziale vs Parallelo",
-#    x = "NxN",
-#    y = "t"
-#  ) +
-#  ggplot(data=dataP, aes(x = NxN, y = t)) +
-#  geom_point(color = "green", size = 3) + 
-#  stat_function(fun = funzione_splineP, color = "blue", linewidth = 1) +
-#  theme_minimal()
-
-ggplot() + 
-  geom_point(data = dataS, aes(x = NxN, y = t, color = "Sequenziale"), size = 1) + 
-  stat_function(fun = funzione_splineS, aes(color = "Sequenziale"), linewidth = 1) + 
+```{r, echo=FALSE, fig.width = 10, fig.height = 6}
+Execution <- ggplot() + 
+  stat_summary(data = dataS, aes(x = NxN, y = t, color = "Sequenziale"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = dataS, aes(x = NxN, y = t, color = "Sequenziale", linetype = "Sequenziale"), fun = mean, geom = "line", linewidth = 1) +
   
-  geom_point(data = dataP, aes(x = NxN, y = t, color = "Parallelo"), size = 3) + 
-  stat_function(fun = funzione_splineP, aes(color = "Parallelo"), linewidth = 1) +
+  stat_summary(data = dataP, aes(x = NxN, y = t, color = "Parallelo"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) + 
+  stat_summary(data = dataP, aes(x = NxN, y = t, color = "Parallelo", linetype = "Parallelo"), fun = mean, geom = "line", linewidth = 1) +
+  
+  facet_wrap(~ OPT, scales = "free_y", ncol = 2) +
   
   # --- Titoli e Stile ---
   labs(
-    title = "Confronto Tempi: Sequenziale vs Parallelo",
-    x = "Dimensione (NxN)",
-    y = "Tempo (t)",
-    color = "Codice" # Titolo della legenda
+    title = "Confronto dei Tempi di Esecuzione: Sequenziale vs Parallelo",
+    subtitle = "Analisi per livelli di ottimizzazione del compilatore",
+    x = "Dimensione della Griglia (N x N)",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
   ) +
-  # Impostiamo i colori manualmente per la legenda
-  scale_color_manual(values = c("Sequenziale" = "red", "Parallelo" = "blue")) +
-  theme_minimal()
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("Sequenziale" = "solid", "Parallelo" = "dashed")) +
+  
+  guides(
+    linetype = "none", 
+    color = guide_legend(override.aes = list(linewidth = 1))
+  ) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8),strip.text = element_text(face = "bold", size = 11))
+Execution
+#ggplotly(Execution)
 ```
 
 Da quello che si può osservare dal grafico, il parallelismo risulta essere uno strumento molto potente, in grado di velocizzare il codice soprattutto aumentando il livello di complessità della matrice come si può notare
 
-## Studio della variazione delle performance in base alla variazione del parallelismo
-### Strong Scaling
+### Studio della variazione delle performance in base alla variazione del parallelismo
+
+#### Strong Scaling
+
 Le perfomance del nostro codice possono variare non solo a come le istruzioni vengono processate (sequenziale o parallelo) ma anche in base a come esse siano distribuite. Questo punto è in grado di essere regolato in base al numero di thread che noi definiamo da usare. Aumentare il numero di thread non comporta sempre l’aumento delle perfomance dato che, se aumentati oltre un certo limite può causare un fenomeno chiamato overhead di gestione, dove l’elevato numero di thread genera una contesa nelle risorse del computer, provocando una riduzione nell’efficienza.
 
 Svolgo il test con una matrice 10000x10000, tenendo conto che in sequenziale il tempo di esecuzione è di 4.99 sec
 
-
-```{r, echo=FALSE, include=FALSE}
+```{r, echo=FALSE,  include=FALSE}
 data_Thread <- read.csv("perf_Parallelismo.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
@@ -113,58 +148,78 @@ data_Thread <- read.csv("perf_Parallelismo.csv", header = F, sep = ",", stringsA
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 data_Thread
 
 ```
+
 ```{r, echo=FALSE}
-seq <- mean(dataS$t[251:300])
-Parallelo <- tibble(
-           SpeedUp=seq/data_Thread$t
-                    ) %>% 
-          mutate(Efficiency=SpeedUp/data_Thread$Threads) %>%
-          mutate(Threads= data_Thread$Threads )
-MeanSpeedUp <- aggregate(SpeedUp ~ Threads, data = Parallelo, FUN = mean)
-SpS<- splinefun(x = MeanSpeedUp$Threads, 
-  y = MeanSpeedUp$SpeedUp,, method = "monoH.FC")
+seq_baseline <- dataS %>%
+  filter(NxN == 10000) %>% 
+  group_by(OPT) %>%
+  summarise(t_seq = mean(t), .groups = "drop")
+
+Parallelo <- data_Thread %>%
+  left_join(seq_baseline, by = "OPT") %>%
+  mutate(
+    SpeedUp = t_seq / t,
+    Efficiency = SpeedUp / Threads
+  )
 ## MeanSpeedUp
-ggplot() +  
-  geom_point(data=Parallelo, aes(x = Threads, y = SpeedUp, color = "blue"), size = 1) + 
-  stat_function(fun = SpS, color = "blue", linewidth = 1) + 
+Speed <- ggplot(data = Parallelo, aes(x = Threads, y = SpeedUp, color = OPT)) +
+  stat_summary(fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(fun = mean, geom = "line", linewidth = 1) +
+  
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey60", linewidth = 0.8) +
+  
+  
   labs(
-    title = "SpeedUp vs Threads",
+    title = "Analisi Scalabilità: SpeedUp vs Threads",
     x = "Numero di Thread",
-    y = "Efficiency"
+    y = "SpeedUp",
+    color = NULL
   ) +
-  theme_minimal()
+  scale_color_manual(values = opt_colors) +
+  guides(color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper()
+Speed
+#ggplotly(Speed)
 ```
 
-Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore, ossia all'incirca **2.61**. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
+Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore in caso in cui si utilizzi come ottimizzatore "-O3", per un numero di thread pari a 16, sono gli altri due ottimizzatori che ottengono il maggior speedup, coincidendo con il numero di processori che ha il computer. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
 
 ```{r, echo=FALSE}
-MeanEfficiency <- aggregate(Efficiency ~ Threads, data = Parallelo, FUN = mean)
-SpE<- splinefun(x = MeanEfficiency$Threads, 
-  y = MeanEfficiency$Efficiency,, method = "monoH.FC")
 ## MeanEfficiency
-ggplot() +
-  geom_point(data=Parallelo, aes(x = Threads, y = Efficiency), color = "green", size = 3) + 
-  stat_function(fun = SpE, color = "blue", linewidth = 1) + 
-  labs(
-    title = "Efficiency vs Threads",
+Efficience <- ggplot(data = Parallelo, aes(x = Threads, y = Efficiency, color = OPT)) +
+    stat_summary(fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+    stat_summary(fun = mean, geom = "line", linewidth = 1) +
+  
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey60", linewidth = 0.8) +
+  
+    labs(
+    title = "Analisi Scalabilità: Efficiency vs Threads",
     x = "Numero di Thread",
-    y = "Efficiency"
+    y = "Efficienza",
+    color = NULL
   ) +
-  theme_minimal()
+  scale_color_manual(values = opt_colors) +
+  guides(color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper()
+Efficience
+#ggplotly(Efficience)
 ```
 
-Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta  fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice. Dove avevamo ottenuto il valore massimo di SpeedUp, l'efficienza risulta del **15,44%**, causato dalle stesse condizioni per il quale lo SpeedUp non aumentava oltre una certa soglia.
+Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice.
 
-### Weak Scaling
+#### Weak Scaling
 
 facendo un analisi dello weak scaling, vogliamo verificare l'efficienza di ciascun thread, aumentando il numero di thread ma mantenendo fisso il carico di lavoro per ciascuno di esso. Questo metodo di analisi va a confrontare il tempo di esecuzione che, se il programma è debolmente scalabile, rimarrà costante circa, altrimenti esso andrà poco a poco aumentando. Si può dedurre che il tempo aumenterà sempre più a causa della **Banda passante della Memoria** ed all'**Overhead di Sincronizzazione**.
-```{r, echo=FALSE}
+
+```{r, echo=FALSE, include=FALSE}
 Weak_dt <- read.csv("Weak_Scaling.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
@@ -172,34 +227,51 @@ Weak_dt <- read.csv("Weak_Scaling.csv", header = F, sep = ",", stringsAsFactors 
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
+Weak_dt
 ```
+
 ```{r, echo=FALSE}
-Weak_mean <- aggregate(t ~ NxN, data = Weak_dt, FUN = mean)
-SpW<- splinefun(x = Weak_mean$NxN, y = Weak_mean$t[1]/Weak_mean$t, method = "monoH.FC")
+weak_baseline <- Weak_dt %>%
+  filter(Threads == 1) %>%
+  group_by(OPT) %>%
+  summarise(t_base = mean(t), .groups = "drop")
 
-ggplot(data=Weak_dt, aes(x = NxN, y = t))  +
-  stat_function(fun = SpW, aes(color = "Private"), linewidth = 1) + 
-  labs(
-    title = "Weak Scaling Efficiency",
-    x = "NxN",
-    y = "t"
-  ) +
-  theme_minimal()
+Weak_Scaling_Data <- Weak_dt %>%
+  left_join(weak_baseline, by = "OPT") %>%
+  mutate(Efficiency = t_base / t)
 
+Weak <- ggplot(data = Weak_Scaling_Data, aes(x = Threads, y = Efficiency, color = OPT)) +
+    stat_summary(fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+    stat_summary(fun = mean, geom = "line", linewidth = 1) +
+  
+    geom_hline(yintercept = 1, linetype = "dashed", color = "grey60", linewidth = 0.8) +
+  
+    labs(
+      title = "Weak Scaling Efficiency",
+      x = "Dimensione della Griglia (N x N)",
+      y = "Tempo di Esecuzione in percentuale alle condizioni iniziali (%)",
+      color = NULL
+    ) +
+  scale_color_manual(values = opt_colors) +
+  guides(color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper()
+Weak
+#ggplotly(Weak)
 ```
 
+### Studio della variazione delle performance in base al numero di variabili condivise/private, e in base al modo di scheduling dei threads
 
-## Studio della variazione delle performance in base al numero di variabili condivise/private, e in base al modo di scheduling dei threads
+#### Private vs Shared
 
-### Private vs Shared
-In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza.
-In OpenMp, la memoria viene gestita attraverso due classi principali:
+In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza. In OpenMp, la memoria viene gestita attraverso due classi principali:
 
-  * **Condivisa**(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
-  * **Privata**(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde 
+-   **Condivisa**(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
+-   **Privata**(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde
 
 Una prova molto interessante da compiere in modo da capire cosa potrebbe accadere in caso di un'errata configurazioni di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando non il tempo di lettura.
 
@@ -212,38 +284,49 @@ Private <- read.csv("parallelismo_privato.csv", header = F, sep = ",", stringsAs
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 Private
 ```
-```{r, echo=FALSE}
-Private_mean <- aggregate(t ~ NxN, data = Private, FUN = mean)
-SpP<- splinefun(x = Private_mean$NxN, y = Private_mean$t, method = "monoH.FC")
 
-ggplot() + geom_point(data=Private, aes(x = NxN, y = t, color="Private"), size=1) +
-  stat_function(fun = SpP, aes(color = "Private"), linewidth = 1) + 
+```{r, echo=FALSE, fig.width = 10, fig.height = 6}
+
+Memoria <- ggplot() + 
+  stat_summary(data = Private, aes(x = NxN, y = t, color = "Private"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = Private, aes(x = NxN, y = t, color = "Private", linetype = "Private"), fun = mean, geom = "line", linewidth = 1) +
+  
+  stat_summary(data = dataP, aes(x = NxN, y = t, color = "Default"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = dataP, aes(x = NxN, y = t, color = "Default", linetype = "Default"), fun = mean, geom = "line", linewidth = 1) +
+  
+  facet_wrap(~ OPT, scales = "free_y", ncol = 2) +
+  
   labs(
-    title = "Shared vs Private",
-    x = "NxN",
-    y = "t"
-  ) + stat_function(fun = funzione_splineP, aes(color = "Shared"), linewidth = 1) +
-  theme_minimal()
-
-
-
-
-
-
+    title = "Gestione Memoria: Default vs Private",
+    x = "Dimensione della Griglia (N x N)",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
+  ) +
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("Private" = "solid", "Default" = "dashed")) +
+  guides(linetype = "none", color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8), strip.text = element_text(face = "bold"))
+Memoria
+#ggplotly(Memoria)
 ```
 
-### Static vs Dynamic
+#### Static vs Dynamic vs Guided
 
 Lo scheduling è un altro requisito importante per l'efficienza di un programma. Esso è il processo mediante il quale un sistema decide l'ordine di esecuzione, assegnando le risorse necessarie. Si divide principalmente in due approcci, che si differenziano in base al momento in cui vengono fatte tali decisioni:
 
-  * **Statico**(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
-  * **Dinamico**(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
-```{r, echo=FALSE}
+-   **Statico**(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
+-   **Dinamico**(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
+-   **Guidato**(Guided Scheduling): le risorse vengono assegnate durante l'esecuzione in blocchi (chunk) di dimensioni via via decrescenti fino a un limite minimo prefissato, permettendo di mantenere l'alta flessibilità ai carichi di lavoro variabili ma riducendo drasticamente il tempo di overhead (sincronizzazione) rispetto al dinamico puro.
+
+```{r, echo=FALSE, include=FALSE}
 Statico <- read.csv("scheduling_statico.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
@@ -251,9 +334,11 @@ Statico <- read.csv("scheduling_statico.csv", header = F, sep = ",", stringsAsFa
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 Dinamico <- read.csv("scheduling_dinamico.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
@@ -261,36 +346,63 @@ Dinamico <- read.csv("scheduling_dinamico.csv", header = F, sep = ",", stringsAs
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
+Guidato <- read.csv("scheduling_guidato.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5,
+      OPT=V6,
+      Chunk=V7
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t, Chunk), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 ```
-```{r, echo=FALSE}
-Static_mean <- aggregate(t ~ NxN, data = Statico, FUN = mean)
-SpSt<- splinefun(x = Static_mean$NxN, y = Static_mean$t, method = "monoH.FC")
 
-Dynamic_mean <- aggregate(t ~ NxN, data = Dinamico, FUN = mean)
-SpDy<- splinefun(x = Dynamic_mean$NxN, y = Dynamic_mean$t, method = "monoH.FC")
+```{r, echo=FALSE, fig.width = 10, fig.height = 6}
 
-ggplot(data=Statico, aes(x = NxN, y = t)) + 
-  stat_function(fun = SpSt, aes(color = "Static"), linewidth = 1) + 
+Scheduling <- ggplot() + 
+  stat_summary(data = Statico, aes(x = NxN, y = t, color = "Static"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = Statico, aes(x = NxN, y = t, color = "Static", linetype = "Static"), fun = mean, geom = "line", linewidth = 1) + 
+  
+  stat_summary(data = Dinamico, aes(x = NxN, y = t, color = "Dynamic"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = Dinamico, aes(x = NxN, y = t, color = "Dynamic", linetype = "Dynamic"), fun = mean, geom = "line", linewidth = 1) +
+  
+  stat_summary(data = Guidato, aes(x = NxN, y = t, color = "Guided"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = Guidato, aes(x = NxN, y = t, color = "Guided", linetype = "Guided"), fun = mean, geom = "line", linewidth = 1) +
+  
+  facet_wrap(~ OPT, scales = "free_y", ncol = 2) +
+  
   labs(
-    title = "Static vs Dynamic",
-    x = "NxN",
-    y = "t"
-  ) + stat_function(fun = SpDy, aes(color = "Dynamic"), linewidth = 1) +
-  theme_minimal()
-
+    title = "Scheduling: Static vs Dynamic",
+    x = "Dimensione della Griglia (N x N)",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
+  ) +
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("Static" = "solid", "Dynamic" = "dashed", "Guided"="dotdash")) +
+  guides(linetype = "none", color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8), strip.text = element_text(face = "bold"))
+Scheduling
+#ggplotly(Scheduling)
 ```
 
-## Analisi in base all'inizializzazione delle Griglie (1D vs 2D)
+### Analisi in base all'inizializzazione delle Griglie (1D vs 2D)
 
-L'obiettivo di questo studio è analizzare come le performance del programma variano in base all'architettura della griglia. In particolare si analizzano due configurazioni diverse di griglia: 
+L'obiettivo di questo studio è analizzare come le performance del programma variano in base all'architettura della griglia. In particolare si analizzano due configurazioni diverse di griglia:
 
-  * **Vettore monodimensionale**, dov'e la griglia'essa viene vettorizzata. In questo caso per spostarsi all'interno del vettore si usa l'indice "y*N + x"
-  * **Matrice bidimensionale**, dove si usa una sintassi più naturale dove per muoversi usiamo separatamente gli indici "x ed y"
+-   **Vettore monodimensionale**, dov'e la griglia'essa viene vettorizzata. In questo caso per spostarsi all'interno del vettore si usa l'indice "y\*N + x"
+-   **Matrice bidimensionale**, dove si usa una sintassi più naturale dove per muoversi usiamo separatamente gli indici "x ed y"
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, include=FALSE}
 Bidimensionale <- read.csv("Griglia.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
     rename(
@@ -298,23 +410,39 @@ Bidimensionale <- read.csv("Griglia.csv", header = F, sep = ",", stringsAsFactor
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
-Bidim_mean <- aggregate(t ~ NxN, data = Bidimensionale, FUN = mean)
-SpBidim<- splinefun(x = Bidim_mean$NxN, y = Bidim_mean$t, method = "monoH.FC")
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
+Bidimensionale
 ```
-```{r, echo= FALSE}
-ggplot(data=Bidimensionale, aes(x = NxN, y = t)) + 
-  stat_function(fun = SpBidim, aes(color = "2D"), linewidth = 1) + 
-  labs(
-    title = "1D vs 2D al variare di N",
-    x = "NxN",
-    y = "t"
-  ) + stat_function(fun = funzione_splineP, aes(color = "1D"), linewidth = 1) +
-  theme_minimal()
 
+```{r, echo= FALSE, fig.width = 10, fig.height = 6}
+GrigliaD <- ggplot() + 
+  stat_summary(data = dataP, aes(x = NxN, y = t, color = "1D"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = dataP, aes(x = NxN, y = t, color = "1D", linetype = "1D"), fun = mean, geom = "line", linewidth = 1) +
+  
+  stat_summary(data = Bidimensionale, aes(x = NxN, y = t, color = "2D"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = Bidimensionale, aes(x = NxN, y = t, color = "2D", linetype = "2D"), fun = mean, geom = "line", linewidth = 1) +
+  
+  facet_wrap(~ OPT, scales = "free_y", ncol = 2) +
+  
+  labs(
+    title = "Inizializzazione Griglia: 1D vs 2D al variare di N",
+    x = "Dimensione della Griglia (N x N)",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
+  ) +
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("1D" = "solid", "2D" = "dashed")) +
+  guides(linetype = "none", color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8), strip.text = element_text(face = "bold"))
+GrigliaD
+#ggplotly(GrigliaD)
 ```
+
 ```{r, echo=FALSE}
 Bidimensionale.T <- read.csv("Griglia_Threads.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
   as.data.frame() %>%
@@ -323,27 +451,45 @@ Bidimensionale.T <- read.csv("Griglia_Threads.csv", header = F, sep = ",", strin
       Threads=V2,
       iter=V3,
       Execution=V4,
-      t=V5
+      t=V5,
+      OPT=V6
     ) %>%
-    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))))
-BidimT_mean <- aggregate(t ~ Threads, data = Bidimensionale.T, FUN = mean)
-SpBidimT<- splinefun(x = BidimT_mean$Threads, y = BidimT_mean$t, method = "monoH.FC")
-Mean.P <- aggregate(t ~ Threads, data= data_Thread , FUN= mean)
-SpPar<- splinefun(x = Mean.P$Threads, y = Mean.P$t, method = "monoH.FC")
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3")))
 ```
-```{r, echo=FALSE}
-ggplot(data=Bidimensionale.T, aes(x = Threads, y = t)) + 
-  stat_function(fun = SpBidimT, aes(color = "2D"), linewidth = 1) + 
-  labs(
-    title = "1D vs 2D al variare dei Thread",
-    x = "Threads",
-    y = "t"
-  ) + stat_function(fun = SpPar, aes(color = "1D"), linewidth = 1) +
-  theme_minimal()
 
+```{r, echo=FALSE, fig.width = 10, fig.height = 6}
+GrigliaT <- ggplot() + 
+  stat_summary(data = data_Thread, aes(x = Threads, y = t, color = "1D"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = data_Thread, aes(x = Threads, y = t, color = "1D", linetype = "1D"), fun = mean, geom = "line", linewidth = 1) +
+  
+  stat_summary(data = Bidimensionale.T, aes(x = Threads, y = t, color = "2D"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = Bidimensionale.T, aes(x = Threads, y = t, color = "2D", linetype = "2D"), fun = mean, geom = "line", linewidth = 1) +
+  
+  facet_wrap(~ OPT, scales = "free_y", ncol = 2) +
+  
+  labs(
+    title = "Inizializzazione Griglia: 1D vs 2D al variare dei Thread",
+    x = "Numero di Thread",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
+  ) +
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("1D" = "solid", "2D" = "dashed")) +
+  guides(linetype = "none", color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8), strip.text = element_text(face = "bold"))
+GrigliaT
+#ggplotly(GrigliaT)
 ```
 
 Questo risultato è estremamente soddisfacente, perché si può notare come la scelta di un vettore monodimensionale, seppur pensato per ottimizzare il comportamento della CPU riguardo i campionamenti dalla RAM, non sempre risulti la decisione più corretta. Si può notare infatti che il comportamento della matrice si adatta meglio, anche se di poco, al multithreading. D'altro canto, il vettore monodimensionale risulta sempre più performante all'aumentare della dimensione del problema.
 
+
+### Analisi finale
+
+L'analisi finale del codice include: 
+  * L'uso del flag -O3 -native che permette al compilatore di lavorare al massimo delle capacità del computer su cui è stato generato
+  * L'uso di guided anziché static. Questa scelta proviene dai riscontri positivi ottenuti dall'analisi svolta in precedenza
 
 

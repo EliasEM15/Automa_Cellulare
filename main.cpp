@@ -3,15 +3,16 @@
 #include <random>
 #include <chrono>
 #include <string>
+#include <cstdint>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
 using namespace std;
 
-void NextGeneration (const vector<int>& CurrentGen, vector<int>& NextGen, int N)
+void NextGeneration (const vector<int>& CurrentGen, vector<int>& NextGen, int N, int& chunk)
 {
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for schedule(guided, 50) 
   
 
     for(int y=1; y< N - 1; ++y)
@@ -37,7 +38,7 @@ void NextGeneration (const vector<int>& CurrentGen, vector<int>& NextGen, int N)
             }
             int CurrentState= CurrentGen[y*N + x];
 
-            if(Alive<2 || Alive>3)
+            if(Alive<2 || Alive>3) 
             {
                 NextGen[y*N + x]=0;
             }
@@ -61,13 +62,16 @@ int main(int argc, char* argv[]){
     int num_threads=4;
     int iter=100;
     int executions=1;
+    int chunk=50;
+    string opt="-O3";
    
  
-    if(argc>= 4){
+    if(argc>= 5){
 
         N=stoi(argv[1]);
         num_threads=stoi(argv[2]);
         executions=stoi(argv[3]);
+        opt=argv[4];
     }
     // cout<<"N,Threads,Iterazioni,Esecuzione,Tempo_s"<<endl;
 
@@ -82,14 +86,14 @@ int main(int argc, char* argv[]){
     vector<int> CurrentGen(N*N, 0);
     vector<int> Gen(N*N, 0);
     vector<int> NextGen(N*N, 0);
-    for(int x=1; x < N-1; ++x)
+    for(int y=1; y < N-1; ++y)
     {
-        for(int y=1; y < N-1; ++y)
+        for(int x=1; x < N-1; ++x)
         {
             Gen[x*N + y] = rand()%2;
         }
     };
-for(int j=0; j <= executions; j++){
+for(int j=0; j <= executions-1; j++){
 
     CurrentGen=Gen;
     #ifndef CSV_OUTPUT
@@ -100,7 +104,7 @@ for(int j=0; j <= executions; j++){
 
     for(int i=0; i <= iter; ++i)
     {
-        NextGeneration(CurrentGen, NextGen, N);
+        NextGeneration(CurrentGen, NextGen, N, chunk);
         swap(CurrentGen, NextGen);
     }
 
@@ -111,16 +115,18 @@ for(int j=0; j <= executions; j++){
     chrono::duration<double> elapsed = end_time - start_time;
 
    #ifdef CSV_OUTPUT
-     cout << N << "," << num_threads << "," << iter << "," << j << "," << elapsed.count() << endl;
+     cout << N << "," << num_threads << "," << iter << "," << j << "," << elapsed.count() << "," << opt << endl; //","<< chunk << endl;
    #else
     cout<<"simulazione completata"<<endl;
     cout<<"Matrice "<<N<<"x"<<N<<endl;
     cout<<"numero di iterazioni simulate: "<<iter<<endl;
     cout<<"tempo: "<< elapsed.count() << endl;
     cout<<"numero di threads: "<< num_threads << endl;
+    cout<<"ottimizzatore: "<< opt << endl;
+    //cout<<"chunk: "<< chunk << endl;
     #endif
 }
 
 
-
+return 0;
 }
