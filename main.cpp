@@ -12,7 +12,7 @@ using namespace std;
 
 void NextGeneration (const vector<int>& CurrentGen, vector<int>& NextGen, int N, int& chunk)
 {
-    #pragma omp parallel for schedule(guided, 50) 
+    #pragma omp parallel for schedule(static) 
   
 
     for(int y=1; y< N - 1; ++y)

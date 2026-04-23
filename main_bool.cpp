@@ -96,8 +96,6 @@ int main(int argc, char* argv[]){
     num_threads = 1;
     #endif
     
-    // ARROTONDAMENTO STRATEGICO: 
-    // Assicuriamoci che N sia un multiplo di 64 per non troncare bit ai bordi
     N = ((N + 63) / 64) * 64; 
     int words_per_row = N / 64; 
     

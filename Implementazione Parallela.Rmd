@@ -7,12 +7,12 @@ mainfont: Times New Roman
 #date: "2026-04-08"
 ---
 
-Il gioco della Vita di John Conway è un modello di automa celllulare. Questo “gioco” si svolge in una griglia quadrata NxN, composta da celle che possono assumere solo due stati: 0(la cellula è morta) o 1(la cellula è viva). Lo stato della griglia evolve in un tempo discreto, con una separazione netta tra lo stato precedente e quello futuro. Il valore di ogni cella varia a seconda dello stato attuale delle celle adiacenti ad essa, seguendo le seguenti regole:
+Il gioco della Vita di John Conway è un modello di automa cellulare. Questo “gioco” si svolge in una griglia quadrata NxN, composta da celle che possono assumere solo due stati: 0 (la cellula è morta) o 1(la cellula è viva). Lo stato della griglia evolve in un tempo discreto, con una separazione netta tra lo stato precedente e quello successivo. Il valore di ogni cella varia a seconda dello stato attuale delle celle adiacenti ad essa, seguendo le seguenti regole:
 
--   Qualsiasi cella viva con meno di due celle vive adiacenti muore, come per effetto d'isolamento;
+-   Qualsiasi cella viva con meno di due celle vive adiacenti muore -\> effetto d'isolamento;
 -   Qualsiasi cella viva con due o tre celle vive adiacenti sopravvive alla generazione successiva;
--   Qualsiasi cella viva con più di tre celle vive adiacenti muore, come per effetto di sovrappopolazione;
--   Qualsiasi cella morta con esattamente tre celle vive adiacenti diventa una cella viva, come per effetto di riproduzione.
+-   Qualsiasi cella viva con più di tre celle vive adiacenti muore -\> effetto sovrappopolazione;
+-   Qualsiasi cella morta con esattamente tre celle vive adiacenti diventa una cella viva -\> effetto di riproduzione.
 
 ```{r setup, include=FALSE}
 library(dplyr)
@@ -32,12 +32,14 @@ paper_colors <- c(
   "Private" = "#B2182B",     "Default" = "#2166AC",
   "Static" = "#B2182B",      "Dynamic" = "#2166AC", "Guided" = "#1B7837",
   "1D" = "#B2182B",          "2D" = "#2166AC",
+  "Nativo" = "#B2182B",
   "SpeedUp" = "#1B7837",     "Efficiency" = "#762A83"
 )
 opt_colors <- c(
   "-O0" = "#D7191C",        # Rosso
   "-O2 -ftree-vectorize" = "#FDAE61",        # Arancione
-  "-O3" = "#2C7BB6"         # Blu scuro
+  "-O3" = "#2C7BB6"   ,      # Blu scuro
+  "-O3 -march=native"= "#D7191C"
 )
 theme_paper <- function() {
   theme_bw(base_size = 11, base_family = "sans") +
@@ -97,7 +99,7 @@ head(dataP)
 
 ### Studio delle performance al variare della dimensione del problema da risolvere
 
-L’analisi delle perfomance viene svolta paragonando i risultati ricavati dal codice sequenziale con quello in parallelo, mantenendo il numero di thread pari al numero di core presenti nel dispositivo e le iterazioni pari a 100:
+L’analisi delle performance viene svolta confrontando i risultati ottenuti dal codice in sequenziale con quelli della versione in parallelo. Il numero di thread viene imposto pari al numero di core presenti nel dispositivo, le iterazioni pari a 100 e lo scheduling di tipo statico:
 
 ```{r, echo=FALSE, fig.width = 10, fig.height = 6}
 Execution <- ggplot() + 
@@ -130,15 +132,15 @@ Execution
 #ggplotly(Execution)
 ```
 
-Da quello che si può osservare dal grafico, il parallelismo risulta essere uno strumento molto potente, in grado di velocizzare il codice soprattutto aumentando il livello di complessità della matrice come si può notare
+Analizzando il grafico, emerge chiaramente come il parallelismo rappresenti uno strumento fondamentale per l'abbattimento dei tempi di calcolo. Il vantaggio computazionale offerto dall'architettura multi-thread si manifesta in modo proporzionale alla dimensione del dominio: all'aumentare della complessità della griglia ($N \times N$), le curve divergono significativamente. Questo dimostra che il parallelismo esprime il suo massimo potenziale sui carichi di lavoro più intensivi, dove il tempo risparmiato nella divisione del calcolo supera ampiamente l'overhead introdotto dalla gestione dei thread.
 
 ### Studio della variazione delle performance in base alla variazione del parallelismo
 
 #### Strong Scaling
 
-Le perfomance del nostro codice possono variare non solo a come le istruzioni vengono processate (sequenziale o parallelo) ma anche in base a come esse siano distribuite. Questo punto è in grado di essere regolato in base al numero di thread che noi definiamo da usare. Aumentare il numero di thread non comporta sempre l’aumento delle perfomance dato che, se aumentati oltre un certo limite può causare un fenomeno chiamato overhead di gestione, dove l’elevato numero di thread genera una contesa nelle risorse del computer, provocando una riduzione nell’efficienza.
+Le perfomance del nostro codice possono variare non solo in base a come le istruzioni vengono processate (sequenziale o parallelo) ma anche in base a come esse sono distribuite. Questo fattore è in grado di essere regolato in base al numero di thread definiti dall'utente. Aumentare il numero di thread non sempre comporta l’aumento delle perfomance dato che, se aumentati oltre un certo limite può avvenire il fenomeno chiamato *overhead* di gestione, dove l’elevato numero di thread genera una contesa nelle risorse del computer, provocando una riduzione nell’efficienza.
 
-Svolgo il test con una matrice 10000x10000, tenendo conto che in sequenziale il tempo di esecuzione è di 4.99 sec
+il test è stato svolto con una matrice 10000x10000, *scheduling* statico e come tempo di esecuzione in sequenziale quello ricavato dalle prove precedenti.
 
 ```{r, echo=FALSE,  include=FALSE}
 data_Thread <- read.csv("perf_Parallelismo.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
@@ -190,7 +192,7 @@ Speed
 #ggplotly(Speed)
 ```
 
-Il grafico presenta un comportamento estremamente peculiare e identificativo delle caratterstiche del nostro hardware. Infatti per un numero di thread pari al numero di core del nostro computer si ottiene lo speedup maggiore in caso in cui si utilizzi come ottimizzatore "-O3", per un numero di thread pari a 16, sono gli altri due ottimizzatori che ottengono il maggior speedup, coincidendo con il numero di processori che ha il computer. Aumentare il numero di thread ulteriormente risulta controproducente, questo dovuto ai ritardi generati dalla contesa delle risorse hardware e dall'alto overhead.
+L'analisi dello **Strong Scaling** rivela un comportamento che riflette l'architettura hardware sottostante. Si osserva infatti che l'algoritmo maggiormente ottimizzato (-O3) raggiunge il picco massimo di Speedup a 10 thread, valore che coincide con il numero di core fisici del processore in uso. Al contrario, le configurazioni meno ottimizzate (-O0 e -O2) continuano a scalare fino a 16 thread, saturando il limite dei core logici (thread hardware) resi disponibili dalla tecnologia *Hyper-Threading*. Aumentare ulteriormente il numero di thread risulta controproducente: l'eccesso di parallelismo, superando la disponibilità hardware, riduce le prestazioni. Questo crollo è dovuto all'elevato *overhead*, causato dalla saturazione della banda di memoria.
 
 ```{r, echo=FALSE}
 ## MeanEfficiency
@@ -213,11 +215,11 @@ Efficience
 #ggplotly(Efficience)
 ```
 
-Nel grafico dell'efficienza si può notare invece, come tale si riduce drasticamente man mano che il numero di thread aumenta fino a quando tale valore non risulta quasi zero, dimostrando come aumentare il numero di thread all'infinito non porti un beneficio nelle performance del codice.
+Dal grafico dell'efficienza si ricava come questa si riduca drasticamente man mano che il numero di thread aumenta fino a quando il valore non è prossimo a zero, dimostrando che *l'OverThreading* frazioni il lavoro del singolo thread, riducendo quindi il tempo di esecuzione dei processi, aumentando di contro i tempi di lettura e scrittura a causa del *thread overhead* e al *Bus Contention*.
 
 #### Weak Scaling
 
-facendo un analisi dello weak scaling, vogliamo verificare l'efficienza di ciascun thread, aumentando il numero di thread ma mantenendo fisso il carico di lavoro per ciascuno di esso. Questo metodo di analisi va a confrontare il tempo di esecuzione che, se il programma è debolmente scalabile, rimarrà costante circa, altrimenti esso andrà poco a poco aumentando. Si può dedurre che il tempo aumenterà sempre più a causa della **Banda passante della Memoria** ed all'**Overhead di Sincronizzazione**.
+facendo un analisi del weak scaling, vogliamo valutare l'efficienza di ciascun thread, aumentando il numero di thread ma mantenendo fisso il carico di lavoro per ciascuno di esso. Nel caso studiato, si fornisce ad ogni *thread* lo studio di 25 milioni di celle, ossia una matrice 5000x5000(se consideriamo 4 thread, il carico di lavoro deve rimanere costante, perciò il la matrice passa da 5000x5000 a 10000x10000). In un caso ideale, il tempo di esecuzione del programma dovrebbe mantenersi invariato, poiché il carico di lavoro associato a ciascun thread rimane fisso. Quello che risulterà invece è una limitazione di questa scalabilità dovuta alla **Banda passante della Memoria** ed all'**Overhead di Sincronizzazione**.
 
 ```{r, echo=FALSE, include=FALSE}
 Weak_dt <- read.csv("Weak_Scaling.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
@@ -254,7 +256,7 @@ Weak <- ggplot(data = Weak_Scaling_Data, aes(x = Threads, y = Efficiency, color 
     labs(
       title = "Weak Scaling Efficiency",
       x = "Dimensione della Griglia (N x N)",
-      y = "Tempo di Esecuzione in percentuale alle condizioni iniziali (%)",
+      y = "Tempo di Esecuzione in percentuale (%)",
       color = NULL
     ) +
   scale_color_manual(values = opt_colors) +
@@ -264,16 +266,16 @@ Weak
 #ggplotly(Weak)
 ```
 
-### Studio della variazione delle performance in base al numero di variabili condivise/private, e in base al modo di scheduling dei threads
+### Studio della variazione delle performance in base alla tipologia di **variabili** e lo **Scheduling** dei threads
 
 #### Private vs Shared
 
-In un ambiente di calcolo parallelo a memoria condivisa, la corretta classificazione delle variabili è fondamentale per garantire sia la correttezza matematica della simulazione, sia la sua efficienza. In OpenMp, la memoria viene gestita attraverso due classi principali:
+In un ambiente di calcolo parallelo, la corretta classificazione delle variabili è importante per garantire correttezza matematica della simulazione ed efficienza del codice stesso. In OpenMp, la memoria viene gestita attraverso due classi principali:
 
--   **Condivisa**(shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen, dato che ogni thread elabora celle strettamente diverse, che quindi non vanno in conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
+-   **Condivisa** (shared): sono le variabili a cui posso avere accesso tutti i thread attivi contemporaneamente. Nel nostro codice, le variabili condivise sono la dimensione N, e gli stati CurrentGen e NextGen. Siccome ogni thread elabora celle distinte e indipendenti, non si verifica alcun conflitto. Usare variabili condivise permette di evitare che inutili copie vengano fatte durante l'esecuzione del programma, evitando quindi il più possibile i tempi di scrittura e lettura, ossia i più lenti.
 -   **Privata**(Private): sono le variabili che ciascun thread ha, il cui valore dev'essere indipendente dall'azione degli altri thread. Affinché l'algoritmo funzioni correttamente, indici di scorrimento come x,ydx e dy, e le variabili temporanee come Alive e CurrentState, devono essere private. Questo perché se fossero condivise, ogni thread sarebbe in grado di sovrascrivere tale valore, portando a perdite di informazioni a "salti" o sovrascritture della variabile, causando quindi un'avanzamento errato dell'algoritmo che porta ad un risultato non concorde
 
-Una prova molto interessante da compiere in modo da capire cosa potrebbe accadere in caso di un'errata configurazioni di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando non il tempo di lettura.
+Una prova interessante da compiere per capire cosa potrebbe accadere in caso di un'errata configurazione di variabili condividise e private è quella di forzare il codice a identificare CurrentGen come variabile privata. Quello che potremmo dedurre che accada è che il programma andrà a generare una griglia per ciascun thread, aumentando i tempi di lettura e di scrittura complessivi, senza contare l'utilizzo della RAM.
 
 ```{r, echo=FALSE, include=FALSE}
 
@@ -320,7 +322,7 @@ Memoria
 
 #### Static vs Dynamic vs Guided
 
-Lo scheduling è un altro requisito importante per l'efficienza di un programma. Esso è il processo mediante il quale un sistema decide l'ordine di esecuzione, assegnando le risorse necessarie. Si divide principalmente in due approcci, che si differenziano in base al momento in cui vengono fatte tali decisioni:
+Lo *Scheduling* è un altro requisito importante per l'efficienza di un programma. il processo mediante il quale un sistema decide l'ordine di esecuzione, assegnando le risorse necessarie. Si divide principalmente in due approcci, che si differenziano in base al momento in cui vengono fatte tali decisioni:
 
 -   **Statico**(Static Scheduling): l'assegnazione delle risorse viene decisa prima dell'esecuzione del programma. Questo permette di migliorare l'overhead ma manca assolutamente di flessibilità.
 -   **Dinamico**(Dynamic Scheduling): le risorse vengono assegnazte durante l'esecuzione del programma, permettendo quindi maggiore flessibilità in caso di variazione del carico di lavoro, aumentando il tempo di esecuzione del programma.
@@ -395,12 +397,16 @@ Scheduling
 #ggplotly(Scheduling)
 ```
 
+
+
+
+
 ### Analisi in base all'inizializzazione delle Griglie (1D vs 2D)
 
 L'obiettivo di questo studio è analizzare come le performance del programma variano in base all'architettura della griglia. In particolare si analizzano due configurazioni diverse di griglia:
 
--   **Vettore monodimensionale**, dov'e la griglia'essa viene vettorizzata. In questo caso per spostarsi all'interno del vettore si usa l'indice "y\*N + x"
--   **Matrice bidimensionale**, dove si usa una sintassi più naturale dove per muoversi usiamo separatamente gli indici "x ed y"
+-   **Vettore monodimensionale**: La griglia viene vettorizzata, distribuendo le righe, risultando in un singolo vettore unico. In questo caso per spostarsi all'interno del vettore si usa l'indice "y\*N + x"
+-   **Matrice bidimensionale**: si usa una sintassi più naturale e per muoversi usiamo separatamente gli indici "x ed y"
 
 ```{r, echo=FALSE, include=FALSE}
 Bidimensionale <- read.csv("Griglia.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
@@ -483,13 +489,92 @@ GrigliaT
 #ggplotly(GrigliaT)
 ```
 
-Questo risultato è estremamente soddisfacente, perché si può notare come la scelta di un vettore monodimensionale, seppur pensato per ottimizzare il comportamento della CPU riguardo i campionamenti dalla RAM, non sempre risulti la decisione più corretta. Si può notare infatti che il comportamento della matrice si adatta meglio, anche se di poco, al multithreading. D'altro canto, il vettore monodimensionale risulta sempre più performante all'aumentare della dimensione del problema.
-
+Questo risultato fa risaltare come la scelta di un vettore monodimensionale, seppur pensato per ottimizzare il comportamento della CPU riguardo i campionamenti dalla RAM, non sempre risulti la decisione più corretta. Si può notare infatti che il comportamento della matrice si adatta meglio, anche se di poco, al *Multithreading* (nel caso dell'ottmizzatore -O3). D'altro canto, il vettore monodimensionale risulta sempre più performante all'aumentare della dimensione del problema.
 
 ### Analisi finale
 
-L'analisi finale del codice include: 
-  * L'uso del flag -O3 -native che permette al compilatore di lavorare al massimo delle capacità del computer su cui è stato generato
-  * L'uso di guided anziché static. Questa scelta proviene dai riscontri positivi ottenuti dall'analisi svolta in precedenza
+La configurazione utilizzata per l'analisi prestazionale definitiva rappresenta la sommatoria di tutti gli studi svolti antecedentemente. Al fine di ridurri al massimo il tempo di esecuzione del programma, l'implementazione finale integra: 
+* L'uso del flag -O3 -native: permette al compilatore di lavorare al massimo delle capacità del computer su cui è stato generato 
+* L'uso di guided anziché static:  permette di ottenere risultati migliori data la maggiore flessibilità del programma in caso di rumori imprevisti. Questa scelta si può confermare osservando le analisi svolte precedentemente.
+
+```{r, include=FALSE}
+BestD <- read.csv("Best_theoryD.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5,
+      OPT=V6
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3", "-O3 -march=native")))
+```
+
+```{r, echo=FALSE}
+Best_theoryD <- ggplot() + 
+  stat_summary(data = BestD, aes(x = NxN, y = t, color = "Nativo"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = BestD, aes(x = NxN, y = t, color = "Nativo", linetype = "Nativo"), fun = mean, geom = "line", linewidth = 1) +
+  
+  stat_summary(data = subset(dataP, OPT == "-O3"), aes(x = NxN, y = t, color = "Default"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = subset(dataP, OPT == "-O3"), aes(x = NxN, y = t, color = "Default", linetype = "Default"), fun = mean, geom = "line", linewidth = 1)  +
+  
+  labs(
+    title = "Gestione Memoria: Default vs Nativo",
+    x = "Dimensione della Griglia (N x N)",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
+  ) +
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("Nativo" = "solid", "Default" = "dashed")) +
+  guides(linetype = "none", color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8), strip.text = element_text(face = "bold"))
+Best_theoryD
+```
+```{r, echo=FALSE}
+BestP <- read.csv("Best_theoryP.csv", header = F, sep = ",", stringsAsFactors = FALSE) %>%
+  as.data.frame() %>%
+    rename(
+      NxN=V1,
+      Threads=V2,
+      iter=V3,
+      Execution=V4,
+      t=V5,
+      OPT=V6
+    ) %>%
+    mutate(across(c(NxN, Threads, iter, Execution, t), ~ as.numeric(sub(",", ".", .))),
+           OPT = factor(OPT, levels = c("-O0", "-O2 -ftree-vectorize", "-O3", "-O3 -march=native")))
+```
+```{r, echo=FALSE}
+Best_theoryP <- ggplot() + 
+  stat_summary(data = BestP, aes(x = Threads, y = t, color = "Nativo"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = BestP, aes(x = Threads, y = t, color = "Nativo", linetype = "Nativo"), fun = mean, geom = "line", linewidth = 1) +
+  
+  stat_summary(data = subset(data_Thread, OPT == "-O3"), aes(x = Threads, y = t, color = "Default"), fun.min = min, fun.max = max, geom = "linerange", linewidth = 0.5, alpha = 0.5) +
+  stat_summary(data = subset(data_Thread, OPT == "-O3"), aes(x = Threads, y = t, color = "Default", linetype = "Default"), fun = mean, geom = "line", linewidth = 1)  +
+  
+  labs(
+    title = "Gestione MultiThreading: Default vs Nativo",
+    x = "Threads",
+    y = "Tempo di Esecuzione (s)",
+    color = NULL
+  ) +
+  scale_color_manual(values = paper_colors) +
+  scale_linetype_manual(values = c("Nativo" = "solid", "Default" = "dashed")) +
+  guides(linetype = "none", color = guide_legend(override.aes = list(linewidth = 1))) +
+  theme_paper() +
+  theme(strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8), strip.text = element_text(face = "bold"))
+Best_theoryP
+```
+
+
+
+Analizzando i grafici si può notare come l'aggiunta della *flag* nativo abbia ridotto, seppur non drasticamente, il tempo di esecuzione in maniera costante e apprezzabile. Il motivo dietro al divario prestazionale poco marcato è dovuto principalmente ad un limite intrinseco del sistema:**le operazioni di scrittura e lettura in RAM**. Essendo questo problema di *Memory-Bound* molto significativo sulle prestazioni del programma, le ottimizzazioni della CPU finiscono per essere rallentantate dalla banda passante della RAM, causando un ridotto guadagno temporale. Questo riscontro è comunque positivo, perché va ad confermare il raggiungimento del limite massimo prestazionale dell'hardware considerato.
+
+
+
+
 
 

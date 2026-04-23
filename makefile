@@ -2,10 +2,10 @@
 CXX = g++
 CXXFLAGS_BASE = -Wall -std=c++17 $(OPT)
 
-N ?= 1000
-THREADS ?=10
+N ?= 10000
+THREADS ?=128
 EXECS ?= 50
-CSV_FILE ?= Best_theory.csv
+CSV_FILE ?= Best_theoryP.csv
 OPT ?= -O3 -march=native
 
 app_test: main.cpp
