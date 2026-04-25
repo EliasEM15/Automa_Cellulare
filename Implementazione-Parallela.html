@@ -356,7 +356,7 @@ Cellulare Game of Life in C++ e OpenMP</h1>
 </div>
 
 
-<p>Il gioco della Vita di John Conway è un modello di automa celllulare.
+<p>Il gioco della Vita di John Conway è un modello di automa cellulare.
 Questo “gioco” si svolge in una griglia quadrata NxN, composta da celle
 che possono assumere solo due stati: 0 (la cellula è morta) o 1(la
 cellula è viva). Lo stato della griglia evolve in un tempo discreto, con
@@ -533,6 +533,45 @@ si adatta meglio, anche se di poco, al <em>Multithreading</em> (nel caso
 dell’ottmizzatore -O3). D’altro canto, il vettore monodimensionale
 risulta sempre più performante all’aumentare della dimensione del
 problema.</p>
+</div>
+<div id="analisi-della-memoria-tramite-valgrind-cachegrind" class="section level3">
+<h3>Analisi della Memoria tramite Valgrind (Cachegrind)</h3>
+<p>Per capire esattamente come il nostro programma usa la memoria,
+abbiamo analizzato il codice ottimizzato con Valgrind, utilizzando lo
+strumento Cachegrind. Questo software simula il comportamento della
+memoria Cache del processore e conta esattamente quante volte la CPU non
+trova un dato e deve aspettare (Cache Miss). I dati ricavati si
+distinguono in tre diverse componenti:</p>
+<ul>
+<li><strong>Lettura delle istruzioni</strong> (Instruction Cache):
+questo punto analizza il tasso di errore nella lettura delle istruzioni
+(I1 miss rate) che indica se la CPU deve recuperare i comandi del
+programma. Da questi dati si nota come tale parametro rimane pari a
+0.00% su tutte le dimensioni testate, anche a N=10000. Questo significa
+che il ciclo <em>for</em> risulta compatto e sempre disponibile nei
+registri più veloci.</li>
+<li><strong>Lettura e scrittura dei dati</strong> (Data Cache L1): in
+questo punto si analizza i fallimenti di accesso ai dati nel primo
+livello di memoria (<em>D1 miss rate</em>), distinguendo tra lettura e
+scrittura per capire come l’algoritmo manipoli fisicamente la griglia.
+Analizzando questi valori, si nota che l’errore in lettura è sempre
+contenuto, ma in scrittura l’errore è intorno al 45% (a prescindere
+dalla dimensione del problema). Quest’analisi conferma che salvare
+continuamente i nuovi risultati sulla griglia <em>NextGen</em> costringe
+la CPU a scartare continuamente pacchetti di dati.</li>
+<li><strong>La prova fisica del Memory Wall</strong>: In questo ultimo
+punto si analizza l’errore sulla Cache L3, l’ultima ancora interna al
+processore, al variare della dimensione della matrice. Esso indica
+quando la CPU sia costretta a usare la memoria RAM. Da questi test
+emerge che con matrici piccole (N=1000) l’errore risulta dello 0.0%
+poiché tutta la matrice era possibile salvarla dentro al processore.
+Tuttavia, da matrici con N=2000 in poi, il tasso di errore si assesta su
+circa il 9%, generando <em>cache miss</em> e costringendo la CPU ad
+ottenere i dati necesssari dalla memoria RAM, generando tempi di lettura
+molto lunghi, che vanno ad impattare significativemente sulle perfomance
+generali. Quest’analisi, dimostra infatti il problema del
+<strong>Memory-Bound</strong></li>
+</ul>
 </div>
 <div id="analisi-finale" class="section level3">
 <h3>Analisi finale</h3>
